@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; // 👈 റീഡയറക്ട് ചെയ്യാൻ ഇംപോർട്ട് ചെയ്തു
 
 const Dashboard = ({ onLogout }) => {
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -10,10 +12,26 @@ const Dashboard = ({ onLogout }) => {
 
   const API_BASE_URL = 'http://localhost:5000/api/products';
 
+  // 🛡️ SECURITY CHECK: ലോഗിൻ ചെയ്യാത്തവരെ തടയുന്നു
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please login to access the dashboard!');
+      if (onLogout) onLogout(); // ലോഗൗട്ട് സ്റ്റേറ്റ് ക്ലിയർ ചെയ്യാൻ
+      navigate('/login'); // റൂട്ടർ ഉപയോഗിക്കുന്നുണ്ടെങ്കിൽ ലോഗിൻ പേജിലേക്ക് വിടാൻ
+    }
+  }, [navigate, onLogout]);
+
   // 1. VIEW PRODUCTS (GET)
   const fetchProducts = async () => {
     try {
-      const response = await fetch(API_BASE_URL);
+      // നാം GET റൂട്ടിന് Auth നിർബന്ധമാക്കിയിട്ടുണ്ടെങ്കിൽ ഹെഡർ വേണം, ഇല്ലെങ്കിൽ ഇത് മാറ്റാം
+      const token = localStorage.getItem('token');
+      const response = await fetch(API_BASE_URL, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       const data = await response.json();
       if (data.success) {
         setProducts(data.products);
@@ -40,10 +58,16 @@ const Dashboard = ({ onLogout }) => {
     const url = editingId ? `${API_BASE_URL}/${editingId}` : API_BASE_URL;
     const method = editingId ? 'PUT' : 'POST';
 
+    // 🔑 ബ്രൗസറിൽ നിന്ന് ടോക്കൺ എടുക്കുന്നു
+    const token = localStorage.getItem('token');
+
     try {
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // 🔒 ടോക്കൺ ബാക്കെൻഡിലേക്ക് അയക്കുന്നു
+        },
         body: JSON.stringify(productData),
       });
       const data = await response.json();
@@ -66,12 +90,22 @@ const Dashboard = ({ onLogout }) => {
   // 3. DELETE PRODUCT (DELETE)
   const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
+      // 🔑 ബ്രൗസറിൽ നിന്ന് ടോക്കൺ എടുക്കുന്നു
+      const token = localStorage.getItem('token');
+
       try {
-        const response = await fetch(`${API_BASE_URL}/${id}`, { method: 'DELETE' });
+        const response = await fetch(`${API_BASE_URL}/${id}`, { 
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}` // 🔒 ടോക്കൺ ബാക്കെൻഡിലേക്ക് അയക്കുന്നു
+          }
+        });
         const data = await response.json();
         if (data.success) {
           showMsg('success', 'Product deleted successfully');
           fetchProducts();
+        } else {
+          showMsg('error', data.message || 'Failed to delete product');
         }
       } catch (error) {
         showMsg('error', 'Failed to delete product');
