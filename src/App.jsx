@@ -1,98 +1,80 @@
-import React, { useState, useEffect } from 'react';
-import Login from './components/login';
-import Signup from './components/signup';
-import Dashboard from './components/Dashboard'; // 👈 Dashboard import ചെയ്തു
+import React, { useState } from "react";
+import { Routes, Route, useNavigate } from "react-router-dom";
 
-const API_BASE_URL = 'http://localhost:5000/api/auth';
+import Navbar from "./components/Navbar";
+import Login from "./components/Login";
+import Signup from "./components/Signup";
+import Dashboard from "./components/Dashboard";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Home from "./pages/Home";
+import NotFount from "./components/NotFount";
 
 function App() {
-  const [currentScreen, setCurrentScreen] = useState('login');
+  const navigate = useNavigate();
 
-  // ആപ്പ് ലോഡ് ചെയ്യുമ്പോൾ ടോക്കൺ ഉണ്ടോ എന്ന് നോക്കി ഓട്ടോമാറ്റിക് ലോഗിൻ ചെയ്യും
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      setCurrentScreen('dashboard');
-    }
-  }, []);
+  // Token State
+  const [token, setToken] = useState(localStorage.getItem("token"));
 
-  const registerUser = async (userData) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData),
-      });
-      return await response.json();
-    } catch (error) {
-      return { success: false, message: 'Server connection failed' };
-    }
-  };
-
-  const loginUser = async (credentials) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentials),
-      });
-      const data = await response.json();
-      
-      if (response.ok && data.accessToken) {
-        setCurrentScreen('dashboard'); // 👈 വിജയകരമായാൽ ഡാഷ്‌ബോർഡിലേക്ക് പോകും
-        return { success: true, data: data.data, accessToken: data.accessToken };
-      } else {
-        return { success: false, message: data.message || 'Invalid credentials' };
-      }
-    } catch (error) {
-      return { success: false, message: 'Server connection failed' };
-    }
-  };
-
+  // Logout Function
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setCurrentScreen('login'); // 👈 ലോഗൗട്ട് ചെയ്യുമ്പോൾ തിരിച്ച് ലോഗിനിലേക്ക്
-  };
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
 
-  const handleUserNotFound = () => {
-    alert("Account not found! Taking you to the Create Account window.");
-    setCurrentScreen('signup'); 
+    setToken(null);
+
+    alert("Logout Successful!");
+
+    navigate("/login");
   };
 
   return (
-    <div style={currentScreen !== 'dashboard' ? appStyles.pageContainer : {}}>
-      {currentScreen === 'login' && (
-        <Login 
-          onLogin={loginUser} 
-          onSwitchToSignup={() => setCurrentScreen('signup')} 
-          onUserNotFound={handleUserNotFound} 
+    <>
+      {/* Navbar */}
+      <Navbar
+        token={token}
+        onLogoutTrigger={handleLogout}
+      />
+
+      {/* Routes */}
+      <Routes>
+
+        {/* Home */}
+        <Route
+          path="/"
+          element={<Home />}
         />
-      )}
-      {currentScreen === 'signup' && (
-        <Signup 
-          onRegister={registerUser} 
-          onSwitchToLogin={() => setCurrentScreen('login')} 
+
+        {/* Login */}
+        <Route
+          path="/login"
+          element={<Login setToken={setToken} />}
         />
-      )}
-      {currentScreen === 'dashboard' && (
-        <Dashboard onLogout={handleLogout} />
-      )}
-    </div>
+
+        {/* Signup */}
+        <Route
+          path="/signup"
+          element={<Signup setToken={setToken} />}
+        />
+
+        {/* Protected Dashboard */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute token={token}>
+              <Dashboard onLogout={handleLogout} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 404 */}
+        <Route
+          path="*"
+          element={<NotFount />}
+        />
+
+      </Routes>
+    </>
   );
 }
-
-const appStyles = {
-  pageContainer: {
-    minHeight: '100vh',
-    backgroundColor: '#ecfdf5', 
-    fontFamily: '"Segoe UI", Tahoma, Geneva, Verdana, sans-serif',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: '20px',
-    boxSizing: 'border-box'
-  }
-};
 
 export default App;

@@ -1,192 +1,305 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; // 👈 റീഡയറക്ട് ചെയ്യാൻ ഇംപോർട്ട് ചെയ്തു
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 const Dashboard = ({ onLogout }) => {
   const navigate = useNavigate();
+
+  const API_BASE_URL = "http://localhost:5000/api/products";
+
   const [products, setProducts] = useState([]);
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [description, setDescription] = useState('');
+
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [description, setDescription] = useState("");
+
   const [editingId, setEditingId] = useState(null);
-  const [message, setMessage] = useState({ type: '', text: '' });
 
-  const API_BASE_URL = 'http://localhost:5000/api/products';
+  const [message, setMessage] = useState({
+    type: "",
+    text: "",
+  });
 
-  // 🛡️ SECURITY CHECK: ലോഗിൻ ചെയ്യാത്തവരെ തടയുന്നു
+  // Token & Role
+  const token = localStorage.getItem("token");
+  const role = localStorage.getItem("role");
+
+  const isAdmin = role === "admin";
+
+  // Check Login
   useEffect(() => {
-    const token = localStorage.getItem('token');
     if (!token) {
-      alert('Please login to access the dashboard!');
-      if (onLogout) onLogout(); // ലോഗൗട്ട് സ്റ്റേറ്റ് ക്ലിയർ ചെയ്യാൻ
-      navigate('/login'); // റൂട്ടർ ഉപയോഗിക്കുന്നുണ്ടെങ്കിൽ ലോഗിൻ പേജിലേക്ക് വിടാൻ
+      alert("Please login first.");
+      navigate("/login");
     }
-  }, [navigate, onLogout]);
+  }, [token, navigate]);
 
-  // 1. VIEW PRODUCTS (GET)
-  const fetchProducts = async () => {
-    try {
-      // നാം GET റൂട്ടിന് Auth നിർബന്ധമാക്കിയിട്ടുണ്ടെങ്കിൽ ഹെഡർ വേണം, ഇല്ലെങ്കിൽ ഇത് മാറ്റാം
-      const token = localStorage.getItem('token');
-      const response = await fetch(API_BASE_URL, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      const data = await response.json();
-      if (data.success) {
-        setProducts(data.products);
-      }
-    } catch (error) {
-      showMsg('error', 'Failed to fetch products from server');
-    }
-  };
-
+  // Load Products
   useEffect(() => {
     fetchProducts();
   }, []);
 
-  const showMsg = (type, text) => {
-    setMessage({ type, text });
-    setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+  // Fetch Products
+  const fetchProducts = async () => {
+    try {
+      const response = await fetch(API_BASE_URL);
+
+      const data = await response.json();
+
+      if (data.success) {
+        setProducts(data.products);
+      } else {
+        showMessage("error", data.message);
+      }
+    } catch (error) {
+      console.log(error);
+      showMessage("error", "Unable to load products.");
+    }
   };
 
-  // 2. ADD & UPDATE PRODUCT (POST & PUT)
+  // Show Alert
+  const showMessage = (type, text) => {
+    setMessage({ type, text });
+
+    setTimeout(() => {
+      setMessage({
+        type: "",
+        text: "",
+      });
+    }, 3000);
+  };
+
+  // Add / Update Product
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    const productData = { name, price: Number(price), description };
-    const url = editingId ? `${API_BASE_URL}/${editingId}` : API_BASE_URL;
-    const method = editingId ? 'PUT' : 'POST';
 
-    // 🔑 ബ്രൗസറിൽ നിന്ന് ടോക്കൺ എടുക്കുന്നു
-    const token = localStorage.getItem('token');
+    const product = {
+      name,
+      price: Number(price),
+      description,
+    };
+
+    const url = editingId
+      ? `${API_BASE_URL}/${editingId}`
+      : API_BASE_URL;
+
+    const method = editingId ? "PUT" : "POST";
 
     try {
       const response = await fetch(url, {
         method,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // 🔒 ടോക്കൺ ബാക്കെൻഡിലേക്ക് അയക്കുന്നു
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(productData),
+        body: JSON.stringify(product),
       });
+
       const data = await response.json();
 
       if (data.success) {
-        showMsg('success', editingId ? 'Product updated successfully!' : 'Product added successfully!');
-        setName('');
-        setPrice('');
-        setDescription('');
+        showMessage(
+          "success",
+          editingId
+            ? "Product Updated Successfully"
+            : "Product Added Successfully"
+        );
+
+        setName("");
+        setPrice("");
+        setDescription("");
         setEditingId(null);
-        fetchProducts(); // Refresh list
+
+        fetchProducts();
       } else {
-        showMsg('error', data.message || 'Something went wrong');
+        showMessage("error", data.message);
       }
     } catch (error) {
-      showMsg('error', 'Server error. Please try again.');
+      console.log(error);
+      showMessage("error", "Server Error");
     }
   };
 
-  // 3. DELETE PRODUCT (DELETE)
+  // Delete Product
   const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this product?')) {
-      // 🔑 ബ്രൗസറിൽ നിന്ന് ടോക്കൺ എടുക്കുന്നു
-      const token = localStorage.getItem('token');
+    const confirmDelete = window.confirm(
+      "Are you sure you want to delete this product?"
+    );
 
-      try {
-        const response = await fetch(`${API_BASE_URL}/${id}`, { 
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}` // 🔒 ടോക്കൺ ബാക്കെൻഡിലേക്ക് അയക്കുന്നു
-          }
-        });
-        const data = await response.json();
-        if (data.success) {
-          showMsg('success', 'Product deleted successfully');
-          fetchProducts();
-        } else {
-          showMsg('error', data.message || 'Failed to delete product');
-        }
-      } catch (error) {
-        showMsg('error', 'Failed to delete product');
+    if (!confirmDelete) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        showMessage("success", "Product Deleted Successfully");
+        fetchProducts();
+      } else {
+        showMessage("error", data.message);
       }
+    } catch (error) {
+      console.log(error);
+      showMessage("error", "Unable to delete product.");
     }
   };
 
-  // Trigger Edit Mode
-  const handleEditClick = (product) => {
+  // Edit Product
+  const handleEdit = (product) => {
     setEditingId(product._id);
     setName(product.name);
     setPrice(product.price);
     setDescription(product.description);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   };
 
   return (
-    <div style={styles.dashboardContainer}>
-      {/* Top Header/Navbar */}
-      <header style={styles.header}>
-        <div style={styles.logoArea}>
-          <span style={styles.logoIcon}>🍃</span>
-          <h1 style={styles.headerTitle}>GreenStock Dashboard</h1>
-        </div>
-        <button onClick={onLogout} style={styles.logoutBtn}>Logout</button>
-      </header>
+    <div style={styles.container}>
+      <div style={styles.header}>
+        <h1>GreenStock Dashboard</h1>
 
-      {/* Alert Messages */}
+        <button
+          style={styles.logoutBtn}
+          onClick={onLogout}
+        >
+          Logout
+        </button>
+      </div>
+
       {message.text && (
-        <div style={message.type === 'success' ? styles.successAlert : styles.errorAlert}>
+        <div
+          style={
+            message.type === "success"
+              ? styles.successMsg
+              : styles.errorMsg
+          }
+        >
           {message.text}
         </div>
       )}
 
-      <div style={styles.mainContent}>
-        {/* Left Side: Product Form (Add/Edit) */}
-        <div style={styles.formSection}>
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>{editingId ? '⚡ Edit Product' : '➕ Add New Product'}</h2>
+      <div
+        style={{
+          ...styles.main,
+          gridTemplateColumns: isAdmin ? "1fr 2fr" : "1fr",
+        }}
+      >
+        {isAdmin && (
+          <div style={styles.formContainer}>
+            <h2>
+              {editingId
+                ? "Edit Product"
+                : "Add Product"}
+            </h2>
+
             <form onSubmit={handleSubmit}>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Product Name</label>
-                <input type="text" placeholder="e.g. Organic Green Tea" value={name} onChange={(e) => setName(e.target.value)} required style={styles.input} />
-              </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Price (₹)</label>
-                <input type="number" placeholder="e.g. 299" value={price} onChange={(e) => setPrice(e.target.value)} required style={styles.input} />
-              </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>Description</label>
-                <textarea placeholder="Write something about the product..." value={description} onChange={(e) => setDescription(e.target.value)} required style={styles.textarea} />
-              </div>
-              <button type="submit" style={styles.submitBtn}>
-                {editingId ? 'Save Changes' : 'Publish Product'}
+              <input
+                type="text"
+                placeholder="Product Name"
+                value={name}
+                onChange={(e) =>
+                  setName(e.target.value)
+                }
+                required
+                style={styles.input}
+              />
+
+              <input
+                type="number"
+                placeholder="Price"
+                value={price}
+                onChange={(e) =>
+                  setPrice(e.target.value)
+                }
+                required
+                style={styles.input}
+              />
+
+              <textarea
+                placeholder="Description"
+                value={description}
+                onChange={(e) =>
+                  setDescription(e.target.value)
+                }
+                required
+                style={styles.textarea}
+              />
+
+              <button
+                type="submit"
+                style={styles.submitBtn}
+              >
+                {editingId
+                  ? "Update Product"
+                  : "Add Product"}
               </button>
+
               {editingId && (
-                <button type="button" onClick={() => { setEditingId(null); setName(''); setPrice(''); setDescription(''); }} style={styles.cancelBtn}>
-                  Cancel Edit
+                <button
+                  type="button"
+                  style={styles.cancelBtn}
+                  onClick={() => {
+                    setEditingId(null);
+                    setName("");
+                    setPrice("");
+                    setDescription("");
+                  }}
+                >
+                  Cancel
                 </button>
               )}
             </form>
           </div>
-        </div>
+        )}
 
-        {/* Right Side: Product Inventory List */}
-        <div style={styles.inventorySection}>
-          <h2 style={styles.sectionTitle}>Current Inventory ({products.length})</h2>
+        <div style={styles.productContainer}>
+          <h2>Products ({products.length})</h2>
+
           {products.length === 0 ? (
-            <div style={styles.noProducts}>No products available. Start adding some!</div>
+            <p>No Products Found.</p>
           ) : (
-            <div style={styles.productGrid}>
+            <div style={styles.grid}>
               {products.map((product) => (
-                <div key={product._id} style={styles.productCard}>
-                  <div style={styles.productInfo}>
-                    <h3 style={styles.prodName}>{product.name}</h3>
-                    <div style={styles.prodPrice}>₹{product.price}</div>
-                    <p style={styles.prodDesc}>{product.description}</p>
-                  </div>
-                  <div style={styles.cardActions}>
-                    <button onClick={() => handleEditClick(product)} style={styles.editBtn}>Edit</button>
-                    <button onClick={() => handleDelete(product._id)} style={styles.deleteBtn}>Delete</button>
-                  </div>
+                <div
+                  key={product._id}
+                  style={styles.card}
+                >
+                  <h3>{product.name}</h3>
+
+                  <h4>₹ {product.price}</h4>
+
+                  <p>{product.description}</p>
+
+                  {isAdmin && (
+                    <div style={styles.buttonGroup}>
+                      <button
+                        style={styles.editBtn}
+                        onClick={() =>
+                          handleEdit(product)
+                        }
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        style={styles.deleteBtn}
+                        onClick={() =>
+                          handleDelete(product._id)
+                        }
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -195,39 +308,157 @@ const Dashboard = ({ onLogout }) => {
       </div>
     </div>
   );
-};
+}; // <--- ഈ ബ്രാക്കറ്റാണ് നിങ്ങളുടെ പഴയ കോഡിൽ വിട്ടുപോയിരുന്നത്!
 
 const styles = {
-  dashboardContainer: { minHeight: '100vh', backgroundColor: '#f0fdf4', fontFamily: '"Segoe UI", sans-serif', padding: '0 0 40px 0' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#059669', padding: '15px 40px', boxShadow: '0 4px 12px rgba(4, 120, 87, 0.15)' },
-  logoArea: { display: 'flex', alignItems: 'center', gap: '10px' },
-  logoIcon: { fontSize: '28px' },
-  headerTitle: { color: 'white', margin: 0, fontSize: '22px', fontWeight: '600' },
-  logoutBtn: { backgroundColor: '#ffffff', color: '#dc2626', border: '1px solid #fca5a5', padding: '8px 18px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', transition: '0.2s' },
-  mainContent: { display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '40px', padding: '40px', maxWidth: '1300px', margin: '0 auto', boxSizing: 'border-box' },
-  formSection: { position: 'sticky', top: '40px' },
-  card: { backgroundColor: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.08)', border: '1px solid #d1fae5' },
-  cardTitle: { margin: '0 0 20px 0', color: '#064e3b', fontSize: '20px' },
-  inputGroup: { marginBottom: '18px' },
-  label: { display: 'block', fontSize: '12px', color: '#065f46', marginBottom: '6px', fontWeight: 'bold', textTransform: 'uppercase' },
-  input: { width: '100%', padding: '12px', border: '1px solid #a7f3d0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', outline: 'none', backgroundColor: '#f0fdf4' },
-  textarea: { width: '100%', padding: '12px', border: '1px solid #a7f3d0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', outline: 'none', backgroundColor: '#f0fdf4', height: '100px', resize: 'vertical' },
-  submitBtn: { width: '100%', padding: '12px', color: 'white', backgroundColor: '#059669', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: '600', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(5, 150, 105, 0.2)' },
-  cancelBtn: { width: '100%', padding: '10px', color: '#475569', backgroundColor: '#e2e8f0', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', marginTop: '10px' },
-  inventorySection: { backgroundColor: '#ffffff', padding: '35px', borderRadius: '16px', boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.05)', border: '1px solid #d1fae5', minHeight: '500px' },
-  sectionTitle: { margin: '0 0 25px 0', color: '#064e3b', fontSize: '22px' },
-  noProducts: { textAlign: 'center', color: '#94a3b8', marginTop: '80px', fontSize: '16px' },
-  productGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' },
-  productCard: { backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', padding: '20px', borderRadius: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'transform 0.2s' },
-  productInfo: { marginBottom: '15px' },
-  prodName: { margin: '0 0 8px 0', color: '#064e3b', fontSize: '18px' },
-  prodPrice: { fontSize: '20px', fontWeight: 'bold', color: '#16a34a', marginBottom: '10px' },
-  prodDesc: { fontSize: '13px', color: '#475569', margin: 0, lineHeight: '1.5' },
-  cardActions: { display: 'flex', gap: '10px', marginTop: 'auto' },
-  editBtn: { flex: 1, padding: '8px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' },
-  deleteBtn: { flex: 1, padding: '8px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' },
-  successAlert: { backgroundColor: '#d1fae5', color: '#065f46', padding: '12px 30px', margin: '20px auto 0 auto', maxWidth: '1220px', borderRadius: '8px', textAlign: 'center', fontWeight: '500', border: '1px solid #a7f3d0' },
-  errorAlert: { backgroundColor: '#fee2e2', color: '#991b1b', padding: '12px 30px', margin: '20px auto 0 auto', maxWidth: '1220px', borderRadius: '8px', textAlign: 'center', fontWeight: '500', border: '1px solid #fca5a5' }
+  container: {
+    minHeight: "100vh",
+    backgroundColor: "#f0fdf4",
+    padding: "30px",
+    fontFamily: "Arial, sans-serif",
+  },
+
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "30px",
+  },
+
+  logoutBtn: {
+    padding: "10px 20px",
+    backgroundColor: "#ef4444",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontSize: "15px",
+  },
+
+  successMsg: {
+    backgroundColor: "#d1fae5",
+    color: "#065f46",
+    padding: "12px",
+    borderRadius: "8px",
+    marginBottom: "20px",
+    textAlign: "center",
+  },
+
+  errorMsg: {
+    backgroundColor: "#fee2e2",
+    color: "#991b1b",
+    padding: "12px",
+    borderRadius: "8px",
+    marginBottom: "20px",
+    textAlign: "center",
+  },
+
+  main: {
+    display: "grid",
+    gap: "30px",
+  },
+
+  formContainer: {
+    backgroundColor: "#fff",
+    padding: "20px",
+    borderRadius: "10px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+    height: "fit-content",
+  },
+
+  input: {
+    width: "100%",
+    padding: "10px",
+    marginBottom: "15px",
+    border: "1px solid #ccc",
+    borderRadius: "5px",
+    fontSize: "15px",
+    boxSizing: "border-box",
+  },
+
+  textarea: {
+    width: "100%",
+    height: "100px",
+    padding: "10px",
+    marginBottom: "15px",
+    border: "1px solid #ccc",
+    borderRadius: "5px",
+    resize: "none",
+    fontSize: "15px",
+    boxSizing: "border-box",
+  },
+
+  submitBtn: {
+    width: "100%",
+    padding: "12px",
+    backgroundColor: "#059669",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontSize: "16px",
+    marginBottom: "10px",
+  },
+
+  cancelBtn: {
+    width: "100%",
+    padding: "12px",
+    backgroundColor: "#6b7280",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontSize: "16px",
+  },
+
+  productContainer: {
+    backgroundColor: "#fff",
+    padding: "20px",
+    borderRadius: "10px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+  },
+
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill,minmax(250px,1fr))",
+    gap: "20px",
+  },
+
+  card: {
+    backgroundColor: "#ecfdf5",
+    padding: "20px",
+    borderRadius: "10px",
+    border: "1px solid #a7f3d0",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+  },
+
+  buttonGroup: {
+    display: "flex",
+    gap: "10px",
+    marginTop: "15px",
+  },
+
+  editBtn: {
+    flex: 1,
+    padding: "10px",
+    backgroundColor: "#3b82f6",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+  },
+
+  deleteBtn: {
+    flex: 1,
+    padding: "10px",
+    backgroundColor: "#dc2626",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
+  },
 };
 
 export default Dashboard;
